@@ -1,0 +1,40 @@
+/* Playhead */
+#playheadCursor {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+    z-index: 30; pointer-events: none; display: none;
+    transition: none; /* Important for smooth JS animation */
+}
+#playheadCursor::before {
+    content: ''; position: absolute; top: 0; left: -5px; width: 11px; height: 24px;
+    background: var(--playhead-color); clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%);
+}
+#playheadCursor::after {
+    content: ''; position: absolute; top: 24px; bottom: 0; left: 0; width: 1px;
+    background: var(--playhead-color); box-shadow: 0 0 10px var(--playhead-color);
+}
+
+/* Tooltip */
+#tooltip {
+    position: fixed; pointer-events: none; z-index: 100;
+    background: rgba(0,0,0,0.9); border: 1px solid #333; color: #eee;
+    padding: 4px 8px; font-size: 10px; border-radius: 4px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    opacity: 0; transition: opacity 0.1s;
+}
+
+/* Note Settings Popover */
+#noteSettings {
+    position: absolute; z-index: 50;
+    background: rgba(17, 17, 17, 0.95);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    display: none;
+    min-width: 120px;
+}
+#noteSettings h4 { font-size: 10px; font-weight: bold; color: #888; margin-bottom: 6px; text-transform: uppercase; }
+.ns-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.ns-row label { font-size: 10px; color: #ccc; }
+.ns-row input { width: 60px; }

@@ -1,0 +1,39 @@
+/* Header & Visualizer */
+canvas#scope {
+    width: 120px; height: 36px; border-radius: 4px; 
+    background: #000; border: 1px solid #333;
+}
+
+/* Sequencer */
+.sequencer-area { display: flex; flex-direction: column; overflow: hidden; position: relative; background: #080808; cursor: crosshair; }
+ 
+.timeline-header {
+    display: flex; height: 24px; background: var(--bg-panel);
+    border-bottom: 1px solid var(--grid-line); padding-left: 80px;
+    position: sticky; top: 0; z-index: 20; cursor: ew-resize;
+}
+.time-step {
+    flex: 1; border-right: 1px solid #222; font-size: 9px; color: #555;
+    display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.time-step:nth-child(4n) { border-right: 1px solid #444; color: #888; }
+
+.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+.track-row { display: flex; height: 30px; border-bottom: 1px solid var(--grid-line); position: relative; }
+.track-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
+ 
+.row-header {
+    width: 80px; flex-shrink: 0; background: var(--bg-panel);
+    border-right: 1px solid var(--grid-line);
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 8px; color: #666; position: sticky; left: 0; z-index: 10;
+    cursor: pointer; transition: color 0.1s;
+}
+.row-header:hover { color: white; background: #222; }
+.row-header.black-key { background: #0c0c0c; color: #444; }
+
+.grid-cells { flex: 1; display: flex; position: relative; }
+.grid-cell { flex: 1; border-right: 1px solid #1a1a1a; position: relative; }
+.grid-cell:nth-child(4n) { border-right: 1px solid #333; }
+.grid-cell:hover { background: rgba(255,255,255,0.05); }

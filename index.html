@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovaSynth Studio (v3.2)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/effects.css">
+</head>
+<body class="flex flex-col">
+
+    <!-- Header -->
+    <header class="h-16 bg-black border-b border-slate-900 flex items-center justify-between px-4 shrink-0 z-30">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 bg-gradient-to-tr from-fuchsia-600 to-purple-600 rounded flex items-center justify-center text-white font-bold shadow-lg shadow-fuchsia-900/50">N</div>
+            <div>
+                <h1 class="font-bold text-xl text-white tracking-tight">Nova<span class="text-fuchsia-500">Synth</span></h1>
+                <div class="text-[10px] text-slate-500">Professional Grid Sequencer</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <canvas id="scope"></canvas>
+
+            <div class="flex items-center bg-slate-900 rounded p-1 gap-1 border border-slate-800">
+                <button id="playBtn" class="w-8 h-8 flex items-center justify-center rounded hover:bg-slate-800 text-green-400 transition" data-tip="Play (Space)"><i class="fas fa-play text-xs"></i></button>
+                <button id="stopBtn" class="w-8 h-8 flex items-center justify-center rounded hover:bg-slate-800 text-red-400 transition" data-tip="Stop"><i class="fas fa-stop text-xs"></i></button>
+                <div class="w-px h-4 bg-slate-800 mx-1"></div>
+                <div class="flex items-center px-2 gap-2" data-tip="Tempo in Beats Per Minute">
+                    <span class="text-[10px] text-slate-500 font-bold">BPM</span>
+                    <input type="number" id="bpmInput" value="124" class="bg-transparent text-white font-mono text-xs w-8 text-center focus:outline-none">
+                </div>
+            </div>
+
+            <div class="flex gap-4 px-4 border-l border-r border-slate-900">
+                <div class="knob-group w-16" data-tip="Sidechain Compression: Ducks volume on Kick hits">
+                    <div class="knob-label"><span>Pump</span><span class="text-fuchsia-500">SC</span></div>
+                    <input id="masterSidechain" type="range" min="0" max="1" step="0.05" value="0.5">
+                </div>
+                <div class="knob-group w-16" data-tip="Master Output Volume">
+                    <div class="knob-label"><span>Master</span></div>
+                    <input id="masterVol" type="range" min="0" max="1" step="0.05" value="0.8">
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button id="saveBtn" class="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-xs py-1.5 px-3 rounded border border-slate-800 transition" data-tip="Save Project to JSON">
+                    <i class="fas fa-save mr-1"></i> Save
+                </button>
+                <label class="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-xs py-1.5 px-3 rounded border border-slate-800 transition cursor-pointer" data-tip="Load Project JSON">
+                    <i class="fas fa-folder-open mr-1"></i> Load
+                    <input type="file" id="loadInput" class="hidden" accept=".json">
+                </label>
+                <button id="exportBtn" class="bg-fuchsia-900/30 hover:bg-fuchsia-900/50 text-fuchsia-300 text-xs py-1.5 px-3 rounded border border-fuchsia-900/50 transition ml-2" data-tip="Render Audio to WAV">
+                    <i class="fas fa-download mr-1"></i> WAV
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Workspace -->
+    <div class="flex flex-grow overflow-hidden">
+        
+        <!-- Sidebar -->
+        <aside class="w-60 bg-black border-r border-slate-900 flex flex-col shrink-0 z-20">
+            <div class="p-3 border-b border-slate-900 flex justify-between items-center">
+                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tracks</h2>
+                <button id="addLayerBtn" class="text-fuchsia-400 hover:text-fuchsia-300 text-[10px] font-bold bg-fuchsia-500/10 px-2 py-1 rounded transition" data-tip="Add New Instrument Layer">+ ADD</button>
+            </div>
+            <div id="layerList" class="flex-col flex overflow-y-auto flex-grow"></div>
+        </aside>
+
+        <!-- Editor -->
+        <main class="flex-grow flex flex-col min-w-0 bg-[#050505] relative">
+            <!-- Top Bar -->
+            <div class="h-9 border-b border-slate-900 flex items-center px-4 justify-between bg-black/50 backdrop-blur-sm z-20">
+                <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    <span class="text-[10px] text-slate-600 font-bold mr-2 uppercase">Pattern</span>
+                    <div id="sheetSelector" class="flex gap-1"></div>
+                    <div class="flex items-center gap-1 ml-2 border-l border-slate-800 pl-2">
+                        <button id="removeSheetBtn" class="w-5 h-5 rounded hover:bg-red-900/30 text-red-500 text-[10px]" data-tip="Remove Current Pattern">-</button>
+                        <button id="addSheetBtn" class="w-5 h-5 rounded hover:bg-slate-800 text-slate-400 text-[10px]" data-tip="Add New Pattern">+</button>
+                        <button id="copySheetBtn" class="w-5 h-5 rounded hover:bg-slate-800 text-blue-400 text-[10px] ml-1" data-tip="Duplicate Pattern"><i class="fas fa-copy"></i></button>
+                    </div>
+                </div>
+                <div class="text-[10px] font-mono text-fuchsia-500" id="activeLayerInfo">--</div>
+            </div>
+
+            <!-- Grid -->
+            <div class="sequencer-area flex-grow" id="sequencerArea">
+                <div id="playheadCursor"></div>
+                <div class="timeline-header" id="timelineHeader"></div>
+                <div class="grid-scroll" id="gridScrollArea"></div>
+                
+                <!-- Floating Note Settings -->
+                <div id="noteSettings">
+                    <h4>Note Properties</h4>
+                    <div id="nsMessage" style="display:none; font-size:10px; color:#ccc; padding:6px 0;">No layer selected</div>
+                    <div class="ns-row">
+                        <label>Fade In</label>
+                        <input type="range" id="nsFadeIn" min="0" max="0.5" step="0.01">
+                    </div>
+                    <div class="ns-row">
+                        <label>Fade Out</label>
+                        <input type="range" id="nsFadeOut" min="0" max="0.5" step="0.01">
+                    </div>
+                    <!-- Delete via right-click on a note now; button removed -->
+                </div>
+            </div>
+
+            <!-- Parameters -->
+            <div id="paramsPanel" class="h-48 bg-[#080808] border-t border-slate-900 shrink-0 flex divide-x divide-slate-900 overflow-x-auto">
+                
+                <!-- OSC -->
+                <div class="p-4 w-40 flex flex-col gap-3 shrink-0">
+                    <h3 class="text-[9px] font-bold text-fuchsia-500 uppercase tracking-widest">Source</h3>
+                    <select id="paramWave" class="w-full bg-black border border-slate-800 text-[10px] text-white p-1 rounded focus:border-fuchsia-500 outline-none" data-tip="Oscillator Waveform Shape">
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="square">Square</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="sine">Sine</option>
+                    </select>
+                    <div class="knob-group" data-tip="Detune: Creates 'SuperSaw' chorus effect">
+                        <div class="knob-label"><span>Detune</span></div>
+                        <input id="paramDetune" type="range" min="0" max="50" step="1">
+                    </div>
+                     <div class="knob-group" data-tip="Layer Volume">
+                        <div class="knob-label"><span>Level</span></div>
+                        <input id="paramVol" type="range" min="0" max="1" step="0.01">
+                    </div>
+                </div>
+
+                <!-- ENV -->
+                <div class="p-4 w-44 flex flex-col gap-2 shrink-0">
+                    <h3 class="text-[9px] font-bold text-fuchsia-500 uppercase tracking-widest">Envelope</h3>
+                    <div class="flex gap-2 items-center" data-tip="Attack: How fast the sound starts"><span class="text-[9px] text-slate-600 w-3">A</span><input id="paramAttack" type="range" min="0.005" max="1.0" step="0.005" class="flex-1"></div>
+                    <div class="flex gap-2 items-center" data-tip="Decay: Time to reach Sustain level"><span class="text-[9px] text-slate-600 w-3">D</span><input id="paramDecay" type="range" min="0.1" max="2.0" step="0.1" class="flex-1"></div>
+                    <div class="flex gap-2 items-center" data-tip="Sustain: Volume while holding note"><span class="text-[9px] text-slate-600 w-3">S</span><input id="paramSustain" type="range" min="0" max="1" step="0.05" class="flex-1"></div>
+                    <div class="flex gap-2 items-center" data-tip="Release: Fade out time"><span class="text-[9px] text-slate-600 w-3">R</span><input id="paramRelease" type="range" min="0.05" max="2.0" step="0.05" class="flex-1"></div>
+                </div>
+
+                <!-- FILTER -->
+                <div class="p-4 w-36 flex flex-col gap-3 shrink-0">
+                    <h3 class="text-[9px] font-bold text-fuchsia-500 uppercase tracking-widest">Filter</h3>
+                    <div class="knob-group" data-tip="Cutoff: Brightness of sound">
+                        <div class="knob-label"><span>Cutoff</span></div>
+                        <input id="paramCutoff" type="range" min="50" max="10000" step="50">
+                    </div>
+                    <div class="knob-group" data-tip="Resonance: Peaks the cutoff frequency">
+                        <div class="knob-label"><span>Resonance</span></div>
+                        <input id="paramRes" type="range" min="0" max="20" step="0.5">
+                    </div>
+                </div>
+
+                <!-- LFO -->
+                <div class="p-4 w-36 flex flex-col gap-3 shrink-0 bg-slate-900/20">
+                    <h3 class="text-[9px] font-bold text-cyan-500 uppercase tracking-widest">Mod / LFO</h3>
+                    <div class="knob-group" data-tip="LFO Rate: Speed of wobble">
+                        <div class="knob-label"><span>Rate</span></div>
+                        <input id="paramLfoRate" type="range" min="0.1" max="20" step="0.1">
+                    </div>
+                    <div class="knob-group" data-tip="LFO Depth: Amount of filter modulation">
+                        <div class="knob-label"><span>Depth</span></div>
+                        <input id="paramLfoDepth" type="range" min="0" max="1000" step="10">
+                    </div>
+                    <div class="flex items-center gap-2 mt-1" data-tip="Trance Gate: Rhythmic chopping effect">
+                        <input type="checkbox" id="paramGate" class="accent-cyan-500 h-3 w-3">
+                        <label for="paramGate" class="text-[9px] text-slate-400">Gate (1/16)</label>
+                    </div>
+                </div>
+
+                 <!-- FX -->
+                 <div class="p-4 w-36 flex flex-col gap-3 shrink-0">
+                    <h3 class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Space</h3>
+                    <div class="knob-group" data-tip="Delay: Echo effect">
+                        <div class="knob-label"><span>Delay</span></div>
+                        <input id="paramDelay" type="range" min="0" max="0.8" step="0.05">
+                    </div>
+                    <div class="knob-group" data-tip="Reverb: Room ambience">
+                        <div class="knob-label"><span>Reverb</span></div>
+                        <input id="paramReverb" type="range" min="0" max="0.8" step="0.05">
+                    </div>
+                </div>
+
+                <!-- TOOLS -->
+                <div class="p-4 flex flex-col justify-center gap-2 w-28 shrink-0">
+                     <button id="clearSheetBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] py-1.5 px-2 rounded border border-slate-700 transition">Clear Pattern</button>
+                    <button id="deleteLayerBtn" class="bg-red-900/20 hover:bg-red-900/40 text-red-400 text-[9px] py-1.5 px-2 rounded border border-red-900/30 transition">Delete Layer</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Tooltip Element -->
+    <div id="tooltip"></div>
+
+    <!-- New Layer Modal -->
+    <div id="newLayerModal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-[#111] p-6 rounded-xl shadow-2xl border border-slate-800 w-80">
+            <h3 class="text-lg font-bold text-white mb-6">Add Instrument</h3>
+            <div class="space-y-3 mb-6">
+                <button onclick="app.createLayer('synth')" class="w-full p-4 bg-[#1a1a1a] hover:bg-[#222] border border-slate-800 hover:border-fuchsia-500 rounded-lg text-left flex items-center gap-4 group transition">
+                    <div class="w-10 h-10 rounded-full bg-fuchsia-500/20 text-fuchsia-400 flex items-center justify-center group-hover:scale-110 transition"><i class="fas fa-wave-square"></i></div>
+                    <div><div class="font-bold text-sm text-white">Polysynth</div><div class="text-[11px] text-slate-400">Leads, Pads & Chords</div></div>
+                </button>
+                <button onclick="app.createLayer('bass')" class="w-full p-4 bg-[#1a1a1a] hover:bg-[#222] border border-slate-800 hover:border-violet-500 rounded-lg text-left flex items-center gap-4 group transition">
+                     <div class="w-10 h-10 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center group-hover:scale-110 transition"><i class="fas fa-bolt"></i></div>
+                    <div><div class="font-bold text-sm text-white">Bass Synth</div><div class="text-[11px] text-slate-400">Monophonic Low End</div></div>
+                </button>
+                <button onclick="app.createLayer('drums')" class="w-full p-4 bg-[#1a1a1a] hover:bg-[#222] border border-slate-800 hover:border-cyan-500 rounded-lg text-left flex items-center gap-4 group transition">
+                     <div class="w-10 h-10 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition"><i class="fas fa-drum"></i></div>
+                    <div><div class="font-bold text-sm text-white">Drum Machine</div><div class="text-[11px] text-slate-400">Retro 80s Samples</div></div>
+                </button>
+            </div>
+            <button onclick="document.getElementById('newLayerModal').classList.add('hidden')" class="w-full py-2 text-xs font-bold text-slate-500 hover:text-white transition">CANCEL</button>
+        </div>
+    </div>
+
+    <script src="js/constants.js" defer></script>
+    <script src="js/audio-fx.js" defer></script>
+    <script src="js/visualizer.js" defer></script>
+    <script src="js/ui.js" defer></script>
+    <script src="js/app.js" defer></script>
+</body>
+</html>
