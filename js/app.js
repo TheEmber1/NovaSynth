@@ -312,7 +312,6 @@ class App {
                     // Right-click to delete a note
                     nb.oncontextmenu = (e) => {
                         e.preventDefault(); e.stopPropagation();
-                        if(!confirm('Delete this note?')) return;
                         const sArr = l.sheets[this.activeSheet][i];
                         const idx = sArr.indexOf(n);
                         if(idx > -1) sArr.splice(idx,1);
@@ -367,6 +366,7 @@ class App {
             originalStep: startStep,
             originalRow: startRow,
             sheet: layer.sheets[this.activeSheet],
+            layer: layer,
             rows: layer.type === 'drums' ? DRUMS : NOTES,
             moved: false
         };
@@ -412,12 +412,16 @@ class App {
                 
                 const idx = oldStepArr.indexOf(this.dragState.note);
                 if(idx > -1) oldStepArr.splice(idx, 1);
-
                 this.dragState.note.value = newRowVal;
-                this.dragState.sheet[newStep].push(this.dragState.note);
-                
-                this.selectedNote.step = newStep;
-                this.selectedNote.rowVal = newRowVal;
+                const destArr = this.dragState.sheet[newStep];
+                const dup = destArr.find(x => x.value === this.dragState.note.value);
+                if(!dup) {
+                    destArr.push(this.dragState.note);
+                    this.selectedNote = { note: this.dragState.note, step: newStep, rowVal: newRowVal, layer: this.dragState.layer };
+                } else {
+                    // If a note with same pitch already exists at target, select that note instead
+                    this.selectedNote = { note: dup, step: newStep, rowVal: newRowVal, layer: this.dragState.layer };
+                }
                 
                 this.previewNote(newRowVal);
                 this.renderGrid();
@@ -442,6 +446,14 @@ class App {
                 if(n) { n.duration = (step-i)+1; this.renderGrid(); return; }
             }
         }
+        // Prevent placing another note with the same pitch in the same cell
+        const existing = s[step].find(x => x.value === val);
+        if(existing) {
+            this.selectedNote = { note: existing, step: step, rowVal: val, layer: l };
+            this.renderGrid();
+            return;
+        }
+
         const n = {value:val, duration:1, fadeIn:0, fadeOut:0};
         s[step].push(n);
         this.previewNote(val);
