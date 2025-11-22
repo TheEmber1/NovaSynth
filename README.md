@@ -1,0 +1,2 @@
+# NovaSynth
+Synth Music Maker
