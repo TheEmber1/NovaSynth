@@ -7,9 +7,9 @@ function initUIBindings(app) {
     $('bpmInput').onchange = (e) => app.bpm = parseInt(e.target.value);
     $('addSheetBtn').onclick = () => app.addSheet();
     $('copySheetBtn').onclick = () => app.duplicateSheet();
-    $('removeSheetBtn').onclick = () => { if(app.sheetCount>1) { app.layers.forEach(l=>l.sheets.splice(app.activeSheet,1)); app.sheetCount--; app.activeSheet=Math.max(0,app.activeSheet-1); app.updateView(); } };
-    $('clearSheetBtn').onclick = () => { app.layers.find(x=>x.id===app.activeLayerId).sheets[app.activeSheet]=Array(16).fill(null).map(()=>[]); app.renderGrid(); };
-    $('deleteLayerBtn').onclick = () => { if(app.layers.length>1){app.layers=app.layers.filter(l=>l.id!==app.activeLayerId); app.selectLayer(app.layers[0].id);} };
+    $('removeSheetBtn').onclick = () => { if(app.sheetCount>1) { app.layers.forEach(l=>l.sheets.splice(app.activeSheet,1)); app.sheetCount--; app.activeSheet=Math.max(0,app.activeSheet-1); app.updateView(); try{ app.autoSave(); }catch(e){} } };
+    $('clearSheetBtn').onclick = () => { app.layers.find(x=>x.id===app.activeLayerId).sheets[app.activeSheet]=Array(16).fill(null).map(()=>[]); app.renderGrid(); try{ app.autoSave(); }catch(e){} };
+    $('deleteLayerBtn').onclick = () => { if(app.layers.length>1){app.layers=app.layers.filter(l=>l.id!==app.activeLayerId); app.selectLayer(app.layers[0].id); try{ app.autoSave(); }catch(e){} } };
     $('saveBtn').onclick = () => app.saveProject && app.saveProject();
     $('loadInput').onchange = (e) => app.loadProject && app.loadProject(e.target.files[0]);
     $('exportBtn').onclick = () => {

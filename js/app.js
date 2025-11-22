@@ -211,12 +211,12 @@ class App {
         if(!existingData) for(let i=0; i<this.sheetCount; i++) newLayer.sheets.push(this.createEmptySheet());
         this.layers.push(newLayer);
         this.renderLayerList();
-        if(!existingData) { this.selectLayer(id); document.getElementById('newLayerModal').classList.add('hidden'); }
+        if(!existingData) { this.selectLayer(id); document.getElementById('newLayerModal').classList.add('hidden'); try{ this.autoSave(); }catch(e){} }
     }
     createEmptySheet() { return Array(16).fill(null).map(() => []); }
 
-    addSheet() { this.sheetCount++; this.layers.forEach(l => l.sheets.push(this.createEmptySheet())); this.activeSheet = this.sheetCount - 1; this.updateView(); }
-    duplicateSheet() { this.sheetCount++; this.layers.forEach(l => { const clone = JSON.parse(JSON.stringify(l.sheets[this.activeSheet])); l.sheets.push(clone); }); this.activeSheet = this.sheetCount - 1; this.updateView(); }
+    addSheet() { this.sheetCount++; this.layers.forEach(l => l.sheets.push(this.createEmptySheet())); this.activeSheet = this.sheetCount - 1; this.updateView(); try{ this.autoSave(); }catch(e){} }
+    duplicateSheet() { this.sheetCount++; this.layers.forEach(l => { const clone = JSON.parse(JSON.stringify(l.sheets[this.activeSheet])); l.sheets.push(clone); }); this.activeSheet = this.sheetCount - 1; this.updateView(); try{ this.autoSave(); }catch(e){} }
 
     updateView() { this.renderSheetSelector(); this.renderGrid(); }
 
@@ -317,6 +317,7 @@ class App {
                         if(idx > -1) sArr.splice(idx,1);
                         if(this.selectedNote && this.selectedNote.note === n) { this.selectedNote = null; document.getElementById('noteSettings').style.display = 'none'; }
                         this.renderGrid();
+                        try { this.autoSave(); } catch(e) {}
                     };
                     cells.appendChild(nb);
                 }
@@ -425,6 +426,7 @@ class App {
                 
                 this.previewNote(newRowVal);
                 this.renderGrid();
+                try { this.autoSave(); } catch(e) {}
             }
             this.dragState = null;
         };
@@ -458,6 +460,7 @@ class App {
         s[step].push(n);
         this.previewNote(val);
         this.renderGrid();
+        try { this.autoSave(); } catch(e) {}
     }
 
     previewNote(val) {
@@ -634,6 +637,37 @@ class App {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        // Also persist to localStorage as a quick-save backup
+        try { this.autoSave(); } catch (e) { /* ignore */ }
+        this.showToast('Project downloaded');
+    }
+
+    showToast(msg, duration=1600) {
+        const t = document.getElementById('toast');
+        if(!t) return;
+        t.textContent = msg;
+        t.classList.remove('hidden');
+        t.style.opacity = '1';
+        clearTimeout(this._toastTimeout);
+        this._toastTimeout = setTimeout(() => { t.classList.add('hidden'); t.style.opacity = ''; }, duration);
+    }
+
+    // Save a serialized copy into localStorage for quick autosave/restore
+    autoSave() {
+        try {
+            const data = {
+                version: 1,
+                bpm: this.bpm,
+                sheetCount: this.sheetCount,
+                activeSheet: this.activeSheet,
+                activeLayerId: this.activeLayerId,
+                layers: this.layers.map(l => ({ id: l.id, name: l.name, type: l.type, params: l.params, sheets: l.sheets }))
+            };
+            localStorage.setItem('novasynth_autosave', JSON.stringify(data));
+            localStorage.setItem('novasynth_autosave_time', Date.now().toString());
+        } catch (e) {
+            // ignore storage errors (e.g., quota)
+        }
     }
 
     // Load a project from a File, JSON string, or plain object
@@ -687,6 +721,7 @@ class App {
         if(this.activeLayerId) this.selectLayer(this.activeLayerId);
         else if(this.layers[0]) this.selectLayer(this.layers[0].id);
         this.updateView();
+        try { this.showToast('Project loaded'); } catch(e) {}
     }
 }
 
