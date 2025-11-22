@@ -613,6 +613,81 @@ class App {
         bind('paramCutoff','cutoff'); bind('paramRes','res'); bind('paramDelay','delay'); bind('paramReverb','reverb');
         bind('paramLfoRate','lfoRate'); bind('paramLfoDepth','lfoDepth'); bind('paramGate','gate', true);
     }
+
+    // Save project to a JSON file (downloads to user's machine)
+    saveProject() {
+        const data = {
+            version: 1,
+            bpm: this.bpm,
+            sheetCount: this.sheetCount,
+            activeSheet: this.activeSheet,
+            activeLayerId: this.activeLayerId,
+            layers: this.layers.map(l => ({ id: l.id, name: l.name, type: l.type, params: l.params, sheets: l.sheets }))
+        };
+
+        const str = JSON.stringify(data, null, 2);
+        const blob = new Blob([str], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'novasynth-project.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    // Load a project from a File, JSON string, or plain object
+    loadProject(input) {
+        if(!input) return;
+        if(typeof input === 'string') {
+            try { const obj = JSON.parse(input); this._applyProject(obj); } catch(e) { alert('Invalid project JSON'); }
+            return;
+        }
+
+        if(input instanceof File) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try { const obj = JSON.parse(e.target.result); this._applyProject(obj); }
+                catch(err) { alert('Failed to load project: invalid JSON'); }
+            };
+            reader.readAsText(input);
+            return;
+        }
+
+        if(typeof input === 'object') {
+            this._applyProject(input);
+        }
+    }
+
+    _applyProject(data) {
+        if(!data || !Array.isArray(data.layers)) { alert('Invalid project data'); return; }
+
+        // Stop playback while loading
+        this.stop();
+
+        // Basic metadata
+        this.bpm = data.bpm || this.bpm;
+        this.sheetCount = data.sheetCount || (data.layers[0] && data.layers[0].sheets ? data.layers[0].sheets.length : this.sheetCount);
+        this.activeSheet = Math.min(Math.max(0, data.activeSheet || 0), Math.max(0, this.sheetCount - 1));
+
+        // Recreate layers (createLayer will construct audio nodes)
+        this.layers = [];
+        data.layers.forEach(ld => {
+            // Ensure sheets length matches sheetCount
+            if(!ld.sheets || !Array.isArray(ld.sheets)) ld.sheets = Array(this.sheetCount).fill(null).map(() => []);
+            // If sheets length mismatches, try to normalize
+            if(ld.sheets.length < this.sheetCount) {
+                while(ld.sheets.length < this.sheetCount) ld.sheets.push(Array(16).fill(null).map(()=>[]));
+            }
+            this.createLayer(ld.type, ld.name, ld);
+        });
+
+        this.activeLayerId = data.activeLayerId || (this.layers[0] && this.layers[0].id) || null;
+        this.renderLayerList();
+        if(this.activeLayerId) this.selectLayer(this.activeLayerId);
+        else if(this.layers[0]) this.selectLayer(this.layers[0].id);
+        this.updateView();
+    }
 }
 
 // Expose global app instance
