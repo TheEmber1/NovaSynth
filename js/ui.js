@@ -12,6 +12,11 @@ function initUIBindings(app) {
     $('deleteLayerBtn').onclick = () => { if(app.layers.length>1){app.layers=app.layers.filter(l=>l.id!==app.activeLayerId); app.selectLayer(app.layers[0].id); try{ app.autoSave(); }catch(e){} } };
     $('saveBtn').onclick = () => app.saveProject && app.saveProject();
     $('loadInput').onchange = (e) => app.loadProject && app.loadProject(e.target.files[0]);
+    const presetSelect = $('presetSelect'); if(presetSelect) presetSelect.onchange = (e) => { if(e.target.value) { app.applyPreset && app.applyPreset(e.target.value); e.target.value = ''; } };
+    const scaleSelect = $('scaleSelect'); if(scaleSelect) scaleSelect.onchange = (e) => { app.setScale && app.setScale(e.target.value); try{ localStorage.setItem('novasynth_scale', e.target.value); }catch(ex){} };
+    const chordToggle = $('chordModeToggle'); if(chordToggle) chordToggle.onchange = (e) => { if(app) app.chordMode = e.target.checked; };
+    const masterPreset = $('masterPresetSelect'); if(masterPreset) masterPreset.onchange = (e) => { if(app) app.applyMasterPreset && app.applyMasterPreset(e.target.value); try{ localStorage.setItem('novasynth_masterPreset', e.target.value); }catch(ex){} };
+    const autoE = $('autoEvolveToggle'); if(autoE) autoE.onchange = (e) => { if(app) app.autoEvolve = e.target.checked; try{ localStorage.setItem('novasynth_autoEvolve', e.target.checked ? '1' : '0'); }catch(ex){} };
     $('exportBtn').onclick = () => {
         if(!app.dest) return;
         const r = new MediaRecorder(app.dest.stream); const c = [];
@@ -76,6 +81,16 @@ function initUIBindings(app) {
     bind('paramAttack','attack'); bind('paramDecay','decay'); bind('paramSustain','sustain'); bind('paramRelease','release');
     bind('paramCutoff','cutoff'); bind('paramRes','res'); bind('paramDelay','delay'); bind('paramReverb','reverb');
     bind('paramLfoRate','lfoRate'); bind('paramLfoDepth','lfoDepth'); bind('paramGate','gate', true);
+
+    // Initialize scale indicator from select value
+    try {
+        const ss = $('scaleSelect');
+        const stored = (function(){ try{ return localStorage.getItem('novasynth_scale'); }catch(e){return null;} })();
+        if(stored && ss) { ss.value = stored; }
+        if(ss && app.setScale) app.setScale(ss.value || 'off');
+        const mp = $('masterPresetSelect'); const mStored = (function(){ try{ return localStorage.getItem('novasynth_masterPreset'); }catch(e){return null;} })(); if(mStored && mp) { mp.value = mStored; if(app.applyMasterPreset) app.applyMasterPreset(mStored); }
+        const ae = $('autoEvolveToggle'); const aStored = (function(){ try{ return localStorage.getItem('novasynth_autoEvolve'); }catch(e){return null;} })(); if(aStored && ae) { ae.checked = (aStored === '1'); if(app) app.autoEvolve = (aStored === '1'); }
+    } catch(e) {}
 
     // Provide showNoteSettings on App prototype to position the note properties popover at the right side
     // of the parameters panel. If no layer is selected, show a small message instead of inputs.

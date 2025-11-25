@@ -23,7 +23,30 @@ class App {
         this.sidechainBus.connect(this.masterGain);
         this.drumBus.connect(this.masterGain);
         this.masterGain.connect(this.limiter);
+        // Create a small chorus send path and connect limiter to destination
+        this.chorusDelay1 = this.ac.createDelay(); this.chorusDelay2 = this.ac.createDelay();
+        this.chorusDelay1.delayTime.value = 0.015; this.chorusDelay2.delayTime.value = 0.022;
+        this.chorusSendGain = this.ac.createGain(); this.chorusSendGain.gain.value = 0.5;
+        this.chorusGain = this.ac.createGain(); this.chorusGain.gain.value = 0; // off by default
+
         this.limiter.connect(this.ac.destination);
+        // Send a portion to chorus delays (wet) which feed destination when chorusGain > 0
+        this.limiter.connect(this.chorusSendGain);
+        this.chorusSendGain.connect(this.chorusDelay1);
+        this.chorusSendGain.connect(this.chorusDelay2);
+        this.chorusDelay1.connect(this.chorusGain);
+        this.chorusDelay2.connect(this.chorusGain);
+        this.chorusGain.connect(this.ac.destination);
+
+        // LFOs to modulate chorus delay times
+        this.chorusLfo1 = this.ac.createOscillator(); this.chorusLfo1.type = 'sine'; this.chorusLfo1.frequency.value = 0.2;
+        this.chorusLfo1Gain = this.ac.createGain(); this.chorusLfo1Gain.gain.value = 0.004;
+        this.chorusLfo1.connect(this.chorusLfo1Gain); this.chorusLfo1Gain.connect(this.chorusDelay1.delayTime);
+        this.chorusLfo1.start();
+        this.chorusLfo2 = this.ac.createOscillator(); this.chorusLfo2.type = 'sine'; this.chorusLfo2.frequency.value = 0.15;
+        this.chorusLfo2Gain = this.ac.createGain(); this.chorusLfo2Gain.gain.value = 0.006;
+        this.chorusLfo2.connect(this.chorusLfo2Gain); this.chorusLfo2Gain.connect(this.chorusDelay2.delayTime);
+        this.chorusLfo2.start();
 
         // Global FX
         this.delayNode = this.ac.createDelay();
@@ -52,6 +75,10 @@ class App {
         this.dest = this.ac.createMediaStreamDestination();
         this.limiter.connect(this.dest);
 
+        // Master FX state
+        this.masterPreset = 'off';
+        this.autoEvolve = false;
+
         // State
         this.layers = [];
         this.activeLayerId = null;
@@ -68,6 +95,10 @@ class App {
 
         this.selectedNote = null;
         this.dragState = null; 
+        this.activeScaleName = 'off';
+        this.activeScaleSet = null; // Set of pitch classes
+        this.chordMode = false;
+        this._baseCutoffs = new Map();
 
         // Wire UI and visualizer via helper modules
         initUIBindings(this);
@@ -81,7 +112,123 @@ class App {
         this.animLoop();
     }
 
-    playNote(layer, freq, time, durationSteps, noteData) {
+    applyMasterPreset(key) {
+        this.masterPreset = key || 'off';
+        if(key === 'dreamy') { this.reverbGain.gain.setTargetAtTime(0.7, this.ac.currentTime, 0.1); this.chorusGain.gain.setTargetAtTime(0.45, this.ac.currentTime, 0.1); }
+        else if(key === 'lush') { this.reverbGain.gain.setTargetAtTime(0.85, this.ac.currentTime, 0.1); this.chorusGain.gain.setTargetAtTime(0.6, this.ac.currentTime, 0.1); }
+        else if(key === 'tight') { this.reverbGain.gain.setTargetAtTime(0.2, this.ac.currentTime, 0.1); this.chorusGain.gain.setTargetAtTime(0.12, this.ac.currentTime, 0.1); }
+        else { this.reverbGain.gain.setTargetAtTime(0.0, this.ac.currentTime, 0.1); this.chorusGain.gain.setTargetAtTime(0.0, this.ac.currentTime, 0.1); }
+        try { localStorage.setItem('novasynth_masterPreset', this.masterPreset); } catch(e){}
+        try { this.showToast(`Master FX: ${this.masterPreset}`); } catch(e){}
+    }
+
+    // Scale / Preset / Chord helpers
+    static PITCH_CLASSES() { return ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']; }
+
+    static SCALE_PATTERNS() {
+        return {
+            'C_major': { root: 'C', intervals: [0,2,4,5,7,9,11] },
+            'A_minor': { root: 'A', intervals: [0,2,3,5,7,8,10] },
+            'Dorian': { root: 'A', intervals: [0,2,3,5,7,9,10] },
+            'Lydian': { root: 'C', intervals: [0,2,4,6,7,9,11] },
+            'Pentatonic': { root: 'C', intervals: [0,2,4,7,9] }
+        };
+    }
+
+    buildScaleSet(scaleKey) {
+        if(!scaleKey || scaleKey === 'off') return null;
+        const p = App.SCALE_PATTERNS()[scaleKey];
+        if(!p) return null;
+        const pc = App.PITCH_CLASSES();
+        const rootIndex = pc.indexOf(p.root);
+        if(rootIndex === -1) return null;
+        const set = new Set();
+        p.intervals.forEach(iv => {
+            const idx = (rootIndex + iv) % 12;
+            set.add(pc[idx]);
+        });
+        return set;
+    }
+
+    setScale(scaleKey) {
+        // Normalize input
+        const key = scaleKey || 'off';
+        this.activeScaleName = key;
+        this.activeScaleSet = this.buildScaleSet(key);
+        // UI indicator
+        try {
+            const el = document.getElementById('scaleIndicator');
+            if(el) el.textContent = key === 'off' ? 'Scale: Off' : `Scale: ${key.replace('_',' ')}`;
+        } catch(e) {}
+        try { this.showToast(key === 'off' ? 'Scale: Off' : `Scale: ${key.replace('_',' ')}`); } catch(e) {}
+    }
+
+    getPitchClass(note) {
+        // note like 'A#4' or 'C4' -> return 'A#' or 'C'
+        return note.length > 2 && note[1] === '#' ? note.slice(0,2) : note.slice(0,1);
+    }
+
+    snapToScale(note) {
+        if(!this.activeScaleSet) return note;
+        const idx = NOTES.indexOf(note);
+        if(idx === -1) return note;
+        // search outward for nearest note in scale
+        for(let d=0; d<=NOTES.length; d++){
+            const hi = idx - d;
+            const lo = idx + d;
+            if(hi >= 0) {
+                if(this.activeScaleSet.has(this.getPitchClass(NOTES[hi]))) return NOTES[hi];
+            }
+            if(lo < NOTES.length) {
+                if(this.activeScaleSet.has(this.getPitchClass(NOTES[lo]))) return NOTES[lo];
+            }
+        }
+        return note;
+    }
+
+    // Build a simple triad (root, third, fifth) based on scale intervals (major/minor by checking scale pattern)
+    buildTriad(rootNote) {
+        // Find root index in NOTES
+        const rootIdx = NOTES.indexOf(rootNote);
+        if(rootIdx === -1) return [rootNote];
+        // To keep it simple, pick notes at offsets: +4 semitones (major third) and +7 semitones (perfect fifth)
+        const chrom = App.PITCH_CLASSES();
+        const rootPc = this.getPitchClass(rootNote);
+        const rootPcIdx = chrom.indexOf(rootPc);
+        if(rootPcIdx === -1) return [rootNote];
+        const thirdPc = chrom[(rootPcIdx + 4) % 12];
+        const fifthPc = chrom[(rootPcIdx + 7) % 12];
+        // Find nearest notes in NOTES with those pitch classes near the same octave as root
+        const third = NOTES.find((n, i) => this.getPitchClass(n) === thirdPc && Math.abs(i - rootIdx) <= 4) || NOTES.find(n => this.getPitchClass(n) === thirdPc) || rootNote;
+        const fifth = NOTES.find((n, i) => this.getPitchClass(n) === fifthPc && Math.abs(i - rootIdx) <= 6) || NOTES.find(n => this.getPitchClass(n) === fifthPc) || rootNote;
+        return [rootNote, third, fifth];
+    }
+
+    // Preset bank
+    PRESET_BANK() {
+        return {
+            'dream_pad': { wave: 'sawtooth', detune: 12, vol: 0.6, attack: 0.5, decay: 0.6, sustain: 0.85, release: 1.6, cutoff: 1200, res: 2, delay: 0.25, reverb: 0.6, lfoRate: 0.1, lfoDepth: 40, gate: false },
+            'shimmer_pad': { wave: 'sawtooth', detune: 18, vol: 0.55, attack: 0.8, decay: 0.8, sustain: 0.9, release: 2.2, cutoff: 1500, res: 1.5, delay: 0.2, reverb: 0.75, lfoRate: 0.05, lfoDepth: 30, gate: false },
+            'soft_lead': { wave: 'sine', detune: 0, vol: 0.6, attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.6, cutoff: 2500, res: 3, delay: 0, reverb: 0.25, lfoRate: 3, lfoDepth: 0, gate: false },
+            'evolving_texture': { wave: 'triangle', detune: 6, vol: 0.5, attack: 0.4, decay: 0.6, sustain: 0.8, release: 1.8, cutoff: 1000, res: 2, delay: 0.3, reverb: 0.7, lfoRate: 0.2, lfoDepth: 80, gate: false },
+            'dream_bass': { wave: 'square', detune: 0, vol: 0.8, attack: 0.02, decay: 0.1, sustain: 0.8, release: 0.4, cutoff: 800, res: 4, delay: 0, reverb: 0.05, lfoRate: 0, lfoDepth: 0, gate: false }
+        };
+    }
+
+    applyPreset(presetKey, layerId=null) {
+        const presets = this.PRESET_BANK();
+        const p = presets[presetKey];
+        if(!p) return;
+        const lid = layerId || this.activeLayerId;
+        const layer = this.layers.find(l => l.id === lid);
+        if(!layer) return;
+        layer.params = Object.assign({}, layer.params, p);
+        this.renderGrid();
+        try { this.autoSave(); } catch(e) {}
+        this.showToast('Preset applied');
+    }
+
+    playNote(layer, freq, time, durationSteps, noteData, gainScale=1) {
         if(layer.muted) return;
         if(this.layers.some(l => l.solo) && !layer.solo) return;
 
@@ -113,7 +260,8 @@ class App {
         const noteAtk = noteData && noteData.fadeIn > 0 ? (d * noteData.fadeIn) : Math.max(0.005, p.attack);
         const noteRel = noteData && noteData.fadeOut > 0 ? (d * noteData.fadeOut) : p.release;
         
-        const voiceVol = p.vol * 0.5; 
+        // Scale per-voice volume to avoid clipping when many notes trigger together
+        const voiceVol = p.vol * 0.5 * gainScale;
 
         amp.gain.setValueAtTime(0, t);
         amp.gain.linearRampToValueAtTime(voiceVol, t + noteAtk);
@@ -149,7 +297,7 @@ class App {
         osc1.stop(kill); osc2.stop(kill); lfo.stop(kill);
     }
 
-    playDrum(layer, type, time) {
+    playDrum(layer, type, time, gainScale=1) {
         if(layer.muted) return;
         if(this.layers.some(l => l.solo) && !layer.solo) return;
 
@@ -162,7 +310,7 @@ class App {
             const osc = this.ac.createOscillator();
             osc.frequency.setValueAtTime(150, t);
             osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
-            gain.gain.setValueAtTime(0.8, t);
+            gain.gain.setValueAtTime(0.8 * gainScale, t);
             gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
             osc.connect(gain); osc.start(t); osc.stop(t+0.5);
         } else if(type === "Snare") {
@@ -172,13 +320,13 @@ class App {
             for(let i=0; i<d.length; i++) d[i]=Math.random()*2-1;
             const n = this.ac.createBufferSource(); n.buffer=b;
             const f = this.ac.createBiquadFilter(); f.type="lowpass"; f.frequency.value=3000;
-            gain.gain.setValueAtTime(0.6, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.25);
+            gain.gain.setValueAtTime(0.6 * gainScale, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.25);
             n.connect(f); f.connect(gain); n.start(t);
         } else {
             const o = this.ac.createOscillator(); o.type="square";
             const f = this.ac.createBiquadFilter(); f.type="highpass"; f.frequency.value=7000;
             o.connect(f); f.connect(gain); o.frequency.value=800;
-            gain.gain.setValueAtTime(0.2, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.05);
+            gain.gain.setValueAtTime(0.2 * gainScale, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.05);
             o.start(t); o.stop(t+0.1);
         }
     }
@@ -413,18 +561,20 @@ class App {
                 
                 const idx = oldStepArr.indexOf(this.dragState.note);
                 if(idx > -1) oldStepArr.splice(idx, 1);
-                this.dragState.note.value = newRowVal;
+                // Snap to active scale if set
+                const snappedRowVal = this.snapToScale(newRowVal);
+                this.dragState.note.value = snappedRowVal;
                 const destArr = this.dragState.sheet[newStep];
                 const dup = destArr.find(x => x.value === this.dragState.note.value);
                 if(!dup) {
                     destArr.push(this.dragState.note);
-                    this.selectedNote = { note: this.dragState.note, step: newStep, rowVal: newRowVal, layer: this.dragState.layer };
+                    this.selectedNote = { note: this.dragState.note, step: newStep, rowVal: snappedRowVal, layer: this.dragState.layer };
                 } else {
                     // If a note with same pitch already exists at target, select that note instead
-                    this.selectedNote = { note: dup, step: newStep, rowVal: newRowVal, layer: this.dragState.layer };
+                    this.selectedNote = { note: dup, step: newStep, rowVal: snappedRowVal, layer: this.dragState.layer };
                 }
                 
-                this.previewNote(newRowVal);
+                this.previewNote(snappedRowVal);
                 this.renderGrid();
                 try { this.autoSave(); } catch(e) {}
             }
@@ -448,6 +598,32 @@ class App {
                 if(n) { n.duration = (step-i)+1; this.renderGrid(); return; }
             }
         }
+        // Snap to current scale if enabled
+        val = this.snapToScale(val);
+
+        if(this.chordMode && l.type !== 'drums') {
+            const notes = this.buildTriad(val);
+            let addedAny = false;
+            notes.forEach(noteVal => {
+                const exists = s[step].find(x => x.value === noteVal);
+                if(!exists) {
+                    const nn = { value: noteVal, duration: 1, fadeIn: 0, fadeOut: 0 };
+                    s[step].push(nn);
+                    addedAny = true;
+                }
+            });
+            if(addedAny) {
+                this.previewNote(notes[0]);
+                this.renderGrid();
+                try { this.autoSave(); } catch(e) {}
+            } else {
+                const existing = s[step].find(x => x.value === notes[0]);
+                if(existing) this.selectedNote = { note: existing, step: step, rowVal: notes[0], layer: l };
+                this.renderGrid();
+            }
+            return;
+        }
+
         // Prevent placing another note with the same pitch in the same cell
         const existing = s[step].find(x => x.value === val);
         if(existing) {
@@ -466,8 +642,8 @@ class App {
     previewNote(val) {
         this.ac.resume();
         const l = this.layers.find(x=>x.id===this.activeLayerId);
-        if(l.type==='drums') this.playDrum(l, val, this.ac.currentTime);
-        else this.playNote(l, FREQS[val], this.ac.currentTime, 0.5, null);
+        if(l.type==='drums') this.playDrum(l, val, this.ac.currentTime, 1);
+        else this.playNote(l, FREQS[val], this.ac.currentTime, 0.5, null, 1);
     }
 
     toggleMute(id, e){e.stopPropagation();const l=this.layers.find(x=>x.id===id);l.muted=!l.muted;this.renderLayerList();}
@@ -504,9 +680,14 @@ class App {
 
     scheduleStep(s, t) {
         this.layers.forEach(l => {
-            l.sheets[this.activeSheet][s].forEach(n => {
-                if(l.type==='drums') this.playDrum(l, n.value, t);
-                else this.playNote(l, FREQS[n.value], t, n.duration, n);
+            // Normalize per-step polyphony to avoid loud spikes when multiple notes play
+            const stepNotes = l.sheets[this.activeSheet][s];
+            const polyCount = stepNotes.length || 1;
+            // Use sqrt normalization so perceived loudness is smoother
+            const gainScale = 1 / Math.sqrt(Math.max(1, polyCount));
+            stepNotes.forEach(n => {
+                if(l.type==='drums') this.playDrum(l, n.value, t, gainScale);
+                else this.playNote(l, FREQS[n.value], t, n.duration, n, gainScale);
             });
         });
     }
@@ -536,6 +717,23 @@ class App {
 
             c.style.display = 'block';
             c.style.transform = `translateX(${x}px)`;
+
+            // Auto-evolve: slowly modulate layer cutoff values for movement
+            if(this.autoEvolve) {
+                const t = this.ac.currentTime;
+                this.layers.forEach(l => {
+                    const p = l.params;
+                    // store base value once
+                    if(!this._baseCutoffs.has(l.id)) this._baseCutoffs.set(l.id, p.cutoff || 1000);
+                    const base = this._baseCutoffs.get(l.id);
+                    const rate = Math.max(0.02, p.lfoRate || 0.1);
+                    const depth = Math.max(10, p.lfoDepth || 50);
+                    const target = base + Math.sin(t * rate) * depth;
+                    p.cutoff = Math.max(50, Math.min(10000, target));
+                });
+                // re-render grid to reflect any visual changes
+                this.renderGrid();
+            }
         });
     }
 
@@ -625,6 +823,9 @@ class App {
             sheetCount: this.sheetCount,
             activeSheet: this.activeSheet,
             activeLayerId: this.activeLayerId,
+            activeScaleName: this.activeScaleName,
+            masterPreset: this.masterPreset,
+            autoEvolve: this.autoEvolve,
             layers: this.layers.map(l => ({ id: l.id, name: l.name, type: l.type, params: l.params, sheets: l.sheets }))
         };
 
@@ -661,6 +862,9 @@ class App {
                 sheetCount: this.sheetCount,
                 activeSheet: this.activeSheet,
                 activeLayerId: this.activeLayerId,
+                activeScaleName: this.activeScaleName,
+                masterPreset: this.masterPreset,
+                autoEvolve: this.autoEvolve,
                 layers: this.layers.map(l => ({ id: l.id, name: l.name, type: l.type, params: l.params, sheets: l.sheets }))
             };
             localStorage.setItem('novasynth_autosave', JSON.stringify(data));
@@ -717,6 +921,10 @@ class App {
         });
 
         this.activeLayerId = data.activeLayerId || (this.layers[0] && this.layers[0].id) || null;
+        // restore scale and master preset and autoEvolve
+        if(data.activeScaleName) this.setScale(data.activeScaleName);
+        if(data.masterPreset) this.applyMasterPreset(data.masterPreset);
+        this.autoEvolve = !!data.autoEvolve;
         this.renderLayerList();
         if(this.activeLayerId) this.selectLayer(this.activeLayerId);
         else if(this.layers[0]) this.selectLayer(this.layers[0].id);

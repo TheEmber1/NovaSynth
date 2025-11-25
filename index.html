@@ -56,6 +56,37 @@
                     <i class="fas fa-folder-open mr-1"></i> Load
                     <input type="file" id="loadInput" class="hidden" accept=".json">
                 </label>
+                <select id="presetSelect" class="bg-slate-900 text-slate-300 text-xs py-1 px-2 rounded border border-slate-800 ml-2" data-tip="Layer Presets">
+                    <option value="">Presets</option>
+                    <option value="dream_pad">Dream Pad</option>
+                    <option value="shimmer_pad">Shimmer Pad</option>
+                    <option value="soft_lead">Soft Lead</option>
+                    <option value="evolving_texture">Evolving Texture</option>
+                    <option value="dream_bass">Dream Bass</option>
+                </select>
+                <select id="masterPresetSelect" class="bg-slate-900 text-slate-300 text-xs py-1 px-2 rounded border border-slate-800 ml-2" data-tip="Master FX Presets">
+                    <option value="off">Master FX: Off</option>
+                    <option value="dreamy">Dreamy</option>
+                    <option value="lush">Lush</option>
+                    <option value="tight">Tight</option>
+                </select>
+                <label class="flex items-center gap-2 bg-slate-900 text-slate-300 text-xs py-1 px-2 rounded border border-slate-800 ml-2 cursor-pointer" data-tip="Auto Evolve: slowly modulates filter cutoff">
+                    <input type="checkbox" id="autoEvolveToggle" class="accent-fuchsia-500">
+                    <span>Auto Evolve</span>
+                </label>
+                <select id="scaleSelect" class="bg-slate-900 text-slate-300 text-xs py-1 px-2 rounded border border-slate-800 ml-2" data-tip="Scale Lock">
+                    <option value="off">Scale: Off</option>
+                    <option value="C_major">C Major</option>
+                    <option value="A_minor">A Minor</option>
+                    <option value="Dorian">Dorian (A)</option>
+                    <option value="Lydian">Lydian (C)</option>
+                    <option value="Pentatonic">Pentatonic (C)</option>
+                </select>
+                <div id="scaleIndicator" class="text-[10px] text-slate-400 ml-2">Scale: Off</div>
+                <label class="flex items-center gap-2 bg-slate-900 text-slate-300 text-xs py-1 px-2 rounded border border-slate-800 ml-2 cursor-pointer" data-tip="Chord Mode: write triads">
+                    <input type="checkbox" id="chordModeToggle" class="accent-fuchsia-500">
+                    <span>Chord Mode</span>
+                </label>
                 <button id="exportBtn" class="bg-fuchsia-900/30 hover:bg-fuchsia-900/50 text-fuchsia-300 text-xs py-1.5 px-3 rounded border border-fuchsia-900/50 transition ml-2" data-tip="Render Audio to WAV">
                     <i class="fas fa-download mr-1"></i> WAV
                 </button>
